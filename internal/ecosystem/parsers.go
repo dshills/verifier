@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+
+	"github.com/dshills/verifier/internal/domain"
 )
 
 // SpecCriticIssue represents a finding from SpecCritic.
@@ -135,11 +137,11 @@ func validatePlanCriticSeverities(issues []PlanCriticIssue) {
 }
 
 func validateRealityCheckDeltas(deltas []RealityCheckDelta) {
-	validKinds := map[string]bool{
-		"added": true, "removed": true, "changed": true, "missing": true,
-	}
 	for i := range deltas {
-		if !validKinds[deltas[i].Kind] {
+		switch deltas[i].Kind {
+		case "added", "removed", "changed", "missing":
+			// valid
+		default:
 			slog.Warn("unknown realitycheck kind, mapping to 'changed'", "kind", deltas[i].Kind)
 			deltas[i].Kind = "changed"
 		}
@@ -154,12 +156,12 @@ func validatePrismFindings(findings []PrismFinding) {
 
 func normalizeSeverity(sev string) string {
 	switch sev {
-	case "critical", "high", "medium", "low":
+	case domain.SeverityCritical, domain.SeverityHigh, domain.SeverityMedium, domain.SeverityLow:
 		return sev
 	default:
 		if sev != "" {
 			slog.Warn("unknown severity, mapping to 'low'", "severity", sev)
 		}
-		return "low"
+		return domain.SeverityLow
 	}
 }

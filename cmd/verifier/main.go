@@ -347,7 +347,7 @@ func applyEcosystem(cfg *domain.Config, arts *domain.Artifacts) {
 		if err != nil {
 			slog.Warn("failed to load spec-critic", "err", err)
 		} else if sc != nil {
-			ecosystem.ApplySpecCritic(arts.Recommendations, sc)
+			ecosystem.ApplySpecCritic(&arts.Recommendations, sc)
 		}
 	}
 	if cfg.PlanCriticPath != "" {

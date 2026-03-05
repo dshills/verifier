@@ -10,7 +10,7 @@ import (
 var reqIDPattern = regexp.MustCompile(`REQ-\d+`)
 
 // ApplySpecCritic boosts severity of recommendations linked to SpecCritic issues.
-func ApplySpecCritic(recs []domain.Recommendation, sc *SpecCriticReport) {
+func ApplySpecCritic(recs *[]domain.Recommendation, sc *SpecCriticReport) {
 	if sc == nil {
 		return
 	}
@@ -20,10 +20,10 @@ func ApplySpecCritic(recs []domain.Recommendation, sc *SpecCriticReport) {
 		if reqID == "" {
 			continue
 		}
-		for i := range recs {
-			for _, coveredReq := range recs[i].Covers.Requirements {
+		for i := range *recs {
+			for _, coveredReq := range (*recs)[i].Covers.Requirements {
 				if coveredReq == reqID {
-					recs[i].Severity = boostSeverity(recs[i].Severity)
+					(*recs)[i].Severity = boostSeverity((*recs)[i].Severity)
 					break
 				}
 			}

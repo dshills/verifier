@@ -128,7 +128,7 @@ func TestApplySpecCriticBoost(t *testing.T) {
 		},
 	}
 
-	ApplySpecCritic(recs, sc)
+	ApplySpecCritic(&recs, sc)
 	if recs[0].Severity != domain.SeverityHigh {
 		t.Errorf("severity = %q, want high (boosted from medium)", recs[0].Severity)
 	}
