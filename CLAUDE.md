@@ -50,7 +50,7 @@ The spec defines a multi-stage analysis pipeline (stages A-G):
 - **Two modes**: `offline` (static heuristics + Go AST) and `llm` (model-assisted)
 - **Deterministic output**: stable ordering by severity desc → confidence desc → ID asc; `--seed` flag for reproducibility
 - **Output formats**: `text`, `md`, `json` — JSON schema is defined in `specs/SPEC.md` section 6.2
-- **LLM interface**: minimal `Complete(ctx, req) (resp, error)` pattern; multi-provider behind build tags
+- **LLM interface**: minimal `Complete(ctx, req) (resp, error)` pattern; supports OpenAI and Anthropic providers
 - **Ecosystem integration**: optional ingestion of SpecCritic/PlanCritic/RealityCheck/Prism JSON outputs via CLI flags
 
 ### Package Layout
@@ -68,15 +68,14 @@ The spec defines a multi-stage analysis pipeline (stages A-G):
 /internal/gaps         # Stage F: gap detection, existing test comparison
 /internal/ranking      # Stage G: severity, TESTREC IDs, sorting, risk_score
 /internal/report       # output formatting (md/json/text)
-/internal/llm          # Phase 2: LLM interface + providers (build-tag gated)
+/internal/llm          # Phase 2: LLM interface + providers (OpenAI, Anthropic)
 /internal/scaffold     # Phase 3: test file generation
 /internal/ecosystem    # Phase 4: external tool JSON ingestion
 ```
 
 ## Dependencies
 
-- **stdlib only** for all core logic. Single exception: `gopkg.in/yaml.v3` for config parsing.
-- LLM providers gated behind build tags (`llm_openai`, `llm_anthropic`).
+- **stdlib only** — zero external dependencies, including a hand-rolled YAML parser for config.
 
 ## Specification & Plan
 
