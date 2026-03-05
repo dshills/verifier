@@ -11,6 +11,7 @@ import (
 
 	"github.com/dshills/verifier/internal/config"
 	"github.com/dshills/verifier/internal/domain"
+	"github.com/dshills/verifier/internal/ecosystem"
 	"github.com/dshills/verifier/internal/gaps"
 	golangpkg "github.com/dshills/verifier/internal/golang"
 	"github.com/dshills/verifier/internal/mapping"
@@ -168,6 +169,9 @@ func runAnalyze(args []string) int {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		return 1
 	}
+
+	// Apply ecosystem tool integrations
+	applyEcosystem(cfg, arts)
 
 	// Build report
 	rpt := report.Build(arts, cfg, version)
@@ -335,6 +339,41 @@ func runScaffold(args []string) int {
 	}
 
 	return 0
+}
+
+func applyEcosystem(cfg *domain.Config, arts *domain.Artifacts) {
+	if cfg.SpecCriticPath != "" {
+		sc, err := ecosystem.LoadSpecCritic(cfg.SpecCriticPath)
+		if err != nil {
+			slog.Warn("failed to load spec-critic", "err", err)
+		} else if sc != nil {
+			ecosystem.ApplySpecCritic(arts.Recommendations, sc)
+		}
+	}
+	if cfg.PlanCriticPath != "" {
+		pc, err := ecosystem.LoadPlanCritic(cfg.PlanCriticPath)
+		if err != nil {
+			slog.Warn("failed to load plan-critic", "err", err)
+		} else if pc != nil {
+			ecosystem.ApplyPlanCritic(&arts.Recommendations, pc)
+		}
+	}
+	if cfg.RealityCheckPath != "" {
+		rc, err := ecosystem.LoadRealityCheck(cfg.RealityCheckPath)
+		if err != nil {
+			slog.Warn("failed to load reality-check", "err", err)
+		} else if rc != nil {
+			ecosystem.ApplyRealityCheck(&arts.Recommendations, rc)
+		}
+	}
+	if cfg.PrismPath != "" {
+		pr, err := ecosystem.LoadPrism(cfg.PrismPath)
+		if err != nil {
+			slog.Warn("failed to load prism", "err", err)
+		} else if pr != nil {
+			ecosystem.ApplyPrism(&arts.Recommendations, pr)
+		}
+	}
 }
 
 func splitCSV(s string) []string {
