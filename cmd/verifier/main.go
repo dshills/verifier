@@ -11,6 +11,15 @@ import (
 
 	"github.com/dshills/verifier/internal/config"
 	"github.com/dshills/verifier/internal/domain"
+	"github.com/dshills/verifier/internal/gaps"
+	golangpkg "github.com/dshills/verifier/internal/golang"
+	"github.com/dshills/verifier/internal/mapping"
+	"github.com/dshills/verifier/internal/parse"
+	"github.com/dshills/verifier/internal/pipeline"
+	"github.com/dshills/verifier/internal/ranking"
+	"github.com/dshills/verifier/internal/repo"
+	"github.com/dshills/verifier/internal/report"
+	"github.com/dshills/verifier/internal/strategy"
 )
 
 var version = "dev"
@@ -142,10 +151,50 @@ func runAnalyze(args []string) int {
 		defer cancel()
 	}
 
-	// TODO: wire pipeline stages (Phase 1b-1g)
-	_ = ctx
-	_ = cfg
-	fmt.Fprintln(os.Stderr, "NOTICE: analyze command not yet fully wired")
+	// Build pipeline with all stages
+	p := pipeline.New(
+		repo.Stage{},
+		parse.Stage{},
+		golangpkg.Stage{},
+		mapping.Stage{},
+		strategy.Stage{},
+		gaps.Stage{},
+		ranking.Stage{},
+	)
+
+	arts, err := p.Run(ctx, cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	// Build report
+	rpt := report.Build(arts, cfg, version)
+
+	// Write output
+	switch cfg.Format {
+	case "json":
+		if err := report.WriteJSON(os.Stdout, rpt); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			return 1
+		}
+	case "md":
+		if err := report.WriteMarkdown(os.Stdout, rpt); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			return 1
+		}
+	case "text":
+		if err := report.WriteText(os.Stdout, rpt); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			return 1
+		}
+	}
+
+	// Check fail-on threshold
+	if ranking.CheckFailOn(rpt.Recommendations, cfg.FailOn) {
+		return 2
+	}
+
 	return 0
 }
 
@@ -191,10 +240,45 @@ func runExplain(args []string) int {
 		return 1
 	}
 
-	// TODO: implement explain (Phase 1g)
-	_ = inputFile
-	fmt.Fprintln(os.Stderr, "NOTICE: explain command not yet implemented")
-	return 0
+	testrecID := fs.Arg(0)
+
+	var rpt *domain.Report
+	var err error
+
+	// Load report from input file or stdin
+	if inputFile != "" {
+		rpt, err = report.LoadJSON(inputFile)
+	} else {
+		// Check if stdin has data
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			if inputFile != "" {
+				slog.Info("both --input and stdin provided; using --input")
+			}
+			rpt, err = report.ReadJSON(os.Stdin)
+		}
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	if rpt == nil {
+		fmt.Fprintln(os.Stderr, "ERROR: no input provided. Use --input <file> or pipe JSON to stdin")
+		return 1
+	}
+
+	// Find recommendation
+	for _, rec := range rpt.Recommendations {
+		if rec.ID == testrecID {
+			report.ExplainRecommendation(os.Stdout, &rec)
+			return 0
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "ERROR: TESTREC ID %q not found in report\n", testrecID)
+	return 1
 }
 
 func runScaffold(args []string) int {
