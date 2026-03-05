@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-03-05T22:44:33.149488Z",
+  "project": {
+    "name": "verifier",
+    "root_path": "/Users/dshills/Development/projects/verifier",
+    "languages": [
+      "Go"
+    ],
+    "go_module": "github.com/dshills/verifier"
+  },
+  "components": [
+    {
+      "name": "app",
+      "description": "Binary entrypoint (package main)",
+      "source_files": [
+        "internal/repo/testdata/sample/cmd/app/main.go"
+      ],
+      "line_ranges": [
+        {
+          "start": 1,
+          "end": 1
+        }
+      ],
+      "confidence_score": 0.9,
+      "inferred": false
+    },
+    {
+      "name": "verifier",
+      "description": "Binary entrypoint (package main)",
+      "source_files": [
+        "cmd/verifier/main.go"
+      ],
+      "line_ranges": [
+        {
+          "start": 1,
+          "end": 1
+        }
+      ],
+      "confidence_score": 0.9,
+      "inferred": false
+    }
+  ],
+  "apis": [],
+  "datastores": [],
+  "jobs": [],
+  "integrations": [],
+  "config": [],
+  "security": {
+    "source_files": null,
+    "line_ranges": null,
+    "confidence_score": 0,
+    "inferred": false
+  }
+}
