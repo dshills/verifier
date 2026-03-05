@@ -19,6 +19,7 @@ import (
 	"github.com/dshills/verifier/internal/ranking"
 	"github.com/dshills/verifier/internal/repo"
 	"github.com/dshills/verifier/internal/report"
+	"github.com/dshills/verifier/internal/scaffold"
 	"github.com/dshills/verifier/internal/strategy"
 )
 
@@ -283,11 +284,56 @@ func runExplain(args []string) int {
 
 func runScaffold(args []string) int {
 	fs := flag.NewFlagSet("scaffold", flag.ContinueOnError)
+	var inputFile, style string
+	var limit int
+	var dryRun, write bool
+	fs.StringVar(&inputFile, "input", "", "Path to prior analysis JSON")
+	fs.IntVar(&limit, "limit", 0, "Limit to top N critical recommendations")
+	fs.BoolVar(&dryRun, "dry-run", true, "Print planned changes without writing")
+	fs.BoolVar(&write, "write", false, "Execute file modifications")
+	fs.StringVar(&style, "style", "std", "Test style: std or go-testify")
+
 	if err := fs.Parse(args); err != nil {
 		return 1
 	}
 
-	fmt.Fprintln(os.Stderr, "NOTICE: scaffold command not yet implemented, see Phase 3")
+	if write {
+		dryRun = false
+	}
+
+	var rpt *domain.Report
+	var err error
+
+	if inputFile != "" {
+		rpt, err = report.LoadJSON(inputFile)
+	} else {
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			rpt, err = report.ReadJSON(os.Stdin)
+		}
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	if rpt == nil {
+		fmt.Fprintln(os.Stderr, "ERROR: no input provided. Use --input <file> or pipe JSON to stdin")
+		return 1
+	}
+
+	actions, selected := scaffold.Plan(rpt.Recommendations, limit)
+	if len(actions) == 0 {
+		fmt.Fprintln(os.Stderr, "NOTICE: no recommendations to scaffold")
+		return 0
+	}
+
+	if err := scaffold.Execute(actions, selected, style, dryRun); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
 	return 0
 }
 
