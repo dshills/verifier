@@ -378,4 +378,5 @@ type LLMConfig struct {
 	Model       string  `yaml:"model"`
 	Temperature float64 `yaml:"temperature"`
 	MaxTokens   int     `yaml:"max_tokens"`
+	APIKey      string  `yaml:"-" json:"-"` // resolved from environment, never serialized
 }

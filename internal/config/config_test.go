@@ -4,11 +4,25 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/dshills/verifier/internal/domain"
 )
+
+// clearVerifierEnv unsets all VERIFIER_* environment variables for test isolation.
+func clearVerifierEnv(t *testing.T) {
+	t.Helper()
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "VERIFIER_") {
+			key, _, _ := strings.Cut(kv, "=")
+			old := os.Getenv(key)
+			_ = os.Unsetenv(key)
+			t.Cleanup(func() { _ = os.Setenv(key, old) })
+		}
+	}
+}
 
 func TestDefaults(t *testing.T) {
 	cfg := Defaults()
@@ -244,6 +258,7 @@ func TestMergeCLIListReplace(t *testing.T) {
 }
 
 func TestLoadMissingDefaultConfig(t *testing.T) {
+	clearVerifierEnv(t)
 	// Change to temp dir where no .verifier.yaml exists
 	orig, err := os.Getwd()
 	if err != nil {
@@ -264,6 +279,7 @@ func TestLoadMissingDefaultConfig(t *testing.T) {
 }
 
 func TestLoadExplicitMissingConfig(t *testing.T) {
+	clearVerifierEnv(t)
 	cli := &domain.Config{ConfigPath: "/nonexistent/config.yaml"}
 	_, err := Load(cli)
 	if err == nil {
@@ -272,6 +288,7 @@ func TestLoadExplicitMissingConfig(t *testing.T) {
 }
 
 func TestLoadWithYAMLFile(t *testing.T) {
+	clearVerifierEnv(t)
 	dir := t.TempDir()
 	yamlContent := `mode: llm
 format: json
@@ -298,6 +315,193 @@ llm:
 	}
 	if cfg.LLM.Provider != "openai" {
 		t.Errorf("provider = %q, want openai", cfg.LLM.Provider)
+	}
+}
+
+func TestMergeEnvAllSettings(t *testing.T) {
+	clearVerifierEnv(t)
+	t.Setenv("VERIFIER_MODE", "llm")
+	t.Setenv("VERIFIER_FORMAT", "json")
+	t.Setenv("VERIFIER_ROOT", "/tmp/myrepo")
+	t.Setenv("VERIFIER_SPEC", "a.md,b.md")
+	t.Setenv("VERIFIER_PLAN", "p1.md, p2.md")
+	t.Setenv("VERIFIER_EXCLUDE", "**/gen/**")
+	t.Setenv("VERIFIER_INCLUDE", "**/*.go")
+	t.Setenv("VERIFIER_FAIL_ON", "critical")
+	t.Setenv("VERIFIER_SEED", "42")
+	t.Setenv("VERIFIER_MAX_FINDINGS", "50")
+	t.Setenv("VERIFIER_TIMEOUT", "5m")
+	t.Setenv("VERIFIER_LLM_PROVIDER", "gemini")
+	t.Setenv("VERIFIER_LLM_MODEL", "gemini-2.0-flash")
+	t.Setenv("VERIFIER_LLM_TEMPERATURE", "0.7")
+	t.Setenv("VERIFIER_LLM_MAX_TOKENS", "4096")
+	t.Setenv("VERIFIER_SPEC_CRITIC", "/tmp/sc.json")
+	t.Setenv("VERIFIER_PLAN_CRITIC", "/tmp/pc.json")
+	t.Setenv("VERIFIER_REALITY_CHECK", "/tmp/rc.json")
+	t.Setenv("VERIFIER_PRISM", "/tmp/pr.json")
+
+	cfg := Defaults()
+	mergeEnv(cfg)
+
+	if cfg.Mode != "llm" {
+		t.Errorf("mode = %q, want llm", cfg.Mode)
+	}
+	if cfg.Format != "json" {
+		t.Errorf("format = %q, want json", cfg.Format)
+	}
+	if cfg.Root != "/tmp/myrepo" {
+		t.Errorf("root = %q, want /tmp/myrepo", cfg.Root)
+	}
+	if len(cfg.SpecPaths) != 2 || cfg.SpecPaths[0] != "a.md" || cfg.SpecPaths[1] != "b.md" {
+		t.Errorf("spec = %v, want [a.md b.md]", cfg.SpecPaths)
+	}
+	if len(cfg.PlanPaths) != 2 || cfg.PlanPaths[0] != "p1.md" || cfg.PlanPaths[1] != "p2.md" {
+		t.Errorf("plan = %v, want [p1.md p2.md]", cfg.PlanPaths)
+	}
+	if len(cfg.Exclude) != 1 || cfg.Exclude[0] != "**/gen/**" {
+		t.Errorf("exclude = %v, want [**/gen/**]", cfg.Exclude)
+	}
+	if len(cfg.Include) != 1 || cfg.Include[0] != "**/*.go" {
+		t.Errorf("include = %v, want [**/*.go]", cfg.Include)
+	}
+	if cfg.FailOn != "critical" {
+		t.Errorf("fail_on = %q, want critical", cfg.FailOn)
+	}
+	if cfg.Seed == nil || *cfg.Seed != 42 {
+		t.Errorf("seed = %v, want 42", cfg.Seed)
+	}
+	if cfg.MaxFindings != 50 {
+		t.Errorf("max_findings = %d, want 50", cfg.MaxFindings)
+	}
+	if cfg.Timeout != 5*time.Minute {
+		t.Errorf("timeout = %v, want 5m", cfg.Timeout)
+	}
+	if cfg.LLM.Provider != "gemini" {
+		t.Errorf("provider = %q, want gemini", cfg.LLM.Provider)
+	}
+	if cfg.LLM.Model != "gemini-2.0-flash" {
+		t.Errorf("model = %q, want gemini-2.0-flash", cfg.LLM.Model)
+	}
+	if cfg.LLM.Temperature != 0.7 {
+		t.Errorf("temperature = %f, want 0.7", cfg.LLM.Temperature)
+	}
+	if cfg.LLM.MaxTokens != 4096 {
+		t.Errorf("max_tokens = %d, want 4096", cfg.LLM.MaxTokens)
+	}
+	if cfg.SpecCriticPath != "/tmp/sc.json" {
+		t.Errorf("spec_critic = %q, want /tmp/sc.json", cfg.SpecCriticPath)
+	}
+	if cfg.PlanCriticPath != "/tmp/pc.json" {
+		t.Errorf("plan_critic = %q, want /tmp/pc.json", cfg.PlanCriticPath)
+	}
+	if cfg.RealityCheckPath != "/tmp/rc.json" {
+		t.Errorf("reality_check = %q, want /tmp/rc.json", cfg.RealityCheckPath)
+	}
+	if cfg.PrismPath != "/tmp/pr.json" {
+		t.Errorf("prism = %q, want /tmp/pr.json", cfg.PrismPath)
+	}
+}
+
+func TestMergeEnvOverriddenByCLI(t *testing.T) {
+	clearVerifierEnv(t)
+	t.Setenv("VERIFIER_LLM_PROVIDER", "gemini")
+	t.Setenv("VERIFIER_LLM_MODEL", "gemini-2.0-flash")
+	t.Setenv("VERIFIER_FORMAT", "json")
+
+	cfg := Defaults()
+	mergeEnv(cfg)
+	mergeCLI(cfg, &domain.Config{
+		Format: "text",
+		LLM: domain.LLMConfig{
+			Provider: "anthropic",
+			Model:    "claude-haiku-4-5-20251001",
+		},
+	})
+
+	if cfg.LLM.Provider != "anthropic" {
+		t.Errorf("provider = %q, want anthropic (CLI override)", cfg.LLM.Provider)
+	}
+	if cfg.LLM.Model != "claude-haiku-4-5-20251001" {
+		t.Errorf("model = %q, want claude-haiku-4-5-20251001 (CLI override)", cfg.LLM.Model)
+	}
+	if cfg.Format != "text" {
+		t.Errorf("format = %q, want text (CLI override)", cfg.Format)
+	}
+}
+
+func TestMergeEnvEmptyNoOverride(t *testing.T) {
+	clearVerifierEnv(t)
+
+	cfg := Defaults()
+	cfg.LLM.Provider = "openai"
+	cfg.LLM.Model = "gpt-4o"
+	mergeEnv(cfg)
+
+	if cfg.Mode != DefaultMode {
+		t.Errorf("mode = %q, want %q (unchanged)", cfg.Mode, DefaultMode)
+	}
+	if cfg.LLM.Provider != "openai" {
+		t.Errorf("provider = %q, want openai (unchanged)", cfg.LLM.Provider)
+	}
+	if cfg.LLM.Model != "gpt-4o" {
+		t.Errorf("model = %q, want gpt-4o (unchanged)", cfg.LLM.Model)
+	}
+}
+
+func TestMergeEnvInvalidNumericIgnored(t *testing.T) {
+	clearVerifierEnv(t)
+	t.Setenv("VERIFIER_SEED", "notanumber")
+	t.Setenv("VERIFIER_MAX_FINDINGS", "bad")
+	t.Setenv("VERIFIER_TIMEOUT", "invalid")
+	t.Setenv("VERIFIER_LLM_TEMPERATURE", "xyz")
+	t.Setenv("VERIFIER_LLM_MAX_TOKENS", "abc")
+
+	cfg := Defaults()
+	mergeEnv(cfg)
+
+	if cfg.Seed != nil {
+		t.Errorf("seed = %v, want nil (invalid ignored)", cfg.Seed)
+	}
+	if cfg.MaxFindings != DefaultMaxFindings {
+		t.Errorf("max_findings = %d, want %d (invalid ignored)", cfg.MaxFindings, DefaultMaxFindings)
+	}
+	if cfg.Timeout != DefaultTimeout {
+		t.Errorf("timeout = %v, want %v (invalid ignored)", cfg.Timeout, DefaultTimeout)
+	}
+}
+
+func TestResolveAPIKey(t *testing.T) {
+	// Known provider with key set
+	t.Setenv("OPENAI_API_KEY", "test-key-123")
+	key, err := resolveAPIKey("openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if key != "test-key-123" {
+		t.Errorf("key = %q, want test-key-123", key)
+	}
+
+	// Known provider with key unset
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	_, err = resolveAPIKey("anthropic")
+	if err == nil {
+		t.Error("expected error for empty ANTHROPIC_API_KEY")
+	}
+
+	// Gemini provider
+	t.Setenv("GEMINI_API_KEY", "gemini-key")
+	key, err = resolveAPIKey("gemini")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if key != "gemini-key" {
+		t.Errorf("key = %q, want gemini-key", key)
+	}
+
+	// Unknown provider
+	_, err = resolveAPIKey("unknown-provider")
+	if err == nil {
+		t.Error("expected error for unknown provider")
 	}
 }
 

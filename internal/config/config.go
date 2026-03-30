@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
@@ -72,6 +73,9 @@ func Load(cliCfg *domain.Config) (*domain.Config, error) {
 		mergeYAML(cfg, yamlCfg)
 	}
 
+	// Apply environment variable overrides (between YAML and CLI)
+	mergeEnv(cfg)
+
 	// Apply CLI overrides
 	if cliCfg != nil {
 		mergeCLI(cfg, cliCfg)
@@ -98,7 +102,135 @@ func Load(cliCfg *domain.Config) (*domain.Config, error) {
 		return nil, err
 	}
 
+	// Resolve API key from environment for LLM mode (only if not already set)
+	if cfg.Mode == "llm" && cfg.LLM.APIKey == "" {
+		key, err := resolveAPIKey(cfg.LLM.Provider)
+		if err != nil {
+			return nil, err
+		}
+		cfg.LLM.APIKey = key
+	}
+
 	return cfg, nil
+}
+
+// mergeEnv applies environment variable overrides.
+// Priority: defaults < YAML < env vars < CLI flags.
+func mergeEnv(cfg *domain.Config) {
+	if v := os.Getenv("VERIFIER_MODE"); v != "" {
+		cfg.Mode = v
+	}
+	if v := os.Getenv("VERIFIER_FORMAT"); v != "" {
+		cfg.Format = v
+	}
+	if v := os.Getenv("VERIFIER_ROOT"); v != "" {
+		cfg.Root = v
+	}
+	if v := os.Getenv("VERIFIER_SPEC"); v != "" {
+		cfg.SpecPaths = splitCSV(v)
+	}
+	if v := os.Getenv("VERIFIER_PLAN"); v != "" {
+		cfg.PlanPaths = splitCSV(v)
+	}
+	if v := os.Getenv("VERIFIER_EXCLUDE"); v != "" {
+		cfg.Exclude = splitCSV(v)
+	}
+	if v := os.Getenv("VERIFIER_INCLUDE"); v != "" {
+		cfg.Include = splitCSV(v)
+	}
+	if v := os.Getenv("VERIFIER_FAIL_ON"); v != "" {
+		cfg.FailOn = v
+	}
+	if v := os.Getenv("VERIFIER_SEED"); v != "" {
+		var s int
+		if _, err := fmt.Sscanf(v, "%d", &s); err != nil {
+			slog.Warn("ignoring invalid VERIFIER_SEED", "value", v, "err", err)
+		} else {
+			cfg.Seed = &s
+		}
+	}
+	if v := os.Getenv("VERIFIER_MAX_FINDINGS"); v != "" {
+		var n int
+		if _, err := fmt.Sscanf(v, "%d", &n); err != nil {
+			slog.Warn("ignoring invalid VERIFIER_MAX_FINDINGS", "value", v, "err", err)
+		} else {
+			cfg.MaxFindings = n
+		}
+	}
+	if v := os.Getenv("VERIFIER_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err != nil {
+			slog.Warn("ignoring invalid VERIFIER_TIMEOUT", "value", v, "err", err)
+		} else {
+			cfg.Timeout = d
+		}
+	}
+	if v := os.Getenv("VERIFIER_LLM_PROVIDER"); v != "" {
+		cfg.LLM.Provider = v
+	}
+	if v := os.Getenv("VERIFIER_LLM_MODEL"); v != "" {
+		cfg.LLM.Model = v
+	}
+	if v := os.Getenv("VERIFIER_LLM_TEMPERATURE"); v != "" {
+		var t float64
+		if _, err := fmt.Sscanf(v, "%f", &t); err != nil {
+			slog.Warn("ignoring invalid VERIFIER_LLM_TEMPERATURE", "value", v, "err", err)
+		} else {
+			cfg.LLM.Temperature = t
+		}
+	}
+	if v := os.Getenv("VERIFIER_LLM_MAX_TOKENS"); v != "" {
+		var n int
+		if _, err := fmt.Sscanf(v, "%d", &n); err != nil {
+			slog.Warn("ignoring invalid VERIFIER_LLM_MAX_TOKENS", "value", v, "err", err)
+		} else {
+			cfg.LLM.MaxTokens = n
+		}
+	}
+	if v := os.Getenv("VERIFIER_SPEC_CRITIC"); v != "" {
+		cfg.SpecCriticPath = v
+	}
+	if v := os.Getenv("VERIFIER_PLAN_CRITIC"); v != "" {
+		cfg.PlanCriticPath = v
+	}
+	if v := os.Getenv("VERIFIER_REALITY_CHECK"); v != "" {
+		cfg.RealityCheckPath = v
+	}
+	if v := os.Getenv("VERIFIER_PRISM"); v != "" {
+		cfg.PrismPath = v
+	}
+}
+
+// splitCSV splits a comma-separated string into trimmed, non-empty parts.
+func splitCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// providerEnvVars maps provider names to their environment variable names.
+var providerEnvVars = map[string]string{
+	"openai":    "OPENAI_API_KEY",
+	"anthropic": "ANTHROPIC_API_KEY",
+	"gemini":    "GEMINI_API_KEY",
+}
+
+// resolveAPIKey reads the API key from the environment for the given provider.
+func resolveAPIKey(provider string) (string, error) {
+	envVar, ok := providerEnvVars[provider]
+	if !ok {
+		return "", fmt.Errorf("config: no known environment variable for provider %q", provider)
+	}
+	key := os.Getenv(envVar)
+	if key == "" {
+		return "", fmt.Errorf("config: %s not set (required for provider %q)", envVar, provider)
+	}
+	return key, nil
 }
 
 func resolveDefaultPaths(root string, candidates []string) []string {
