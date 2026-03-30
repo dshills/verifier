@@ -41,6 +41,8 @@ func NewProvider(providerName, model, apiKey string) (Provider, error) {
 		return NewOpenAIProvider(model, apiKey), nil
 	case "anthropic":
 		return NewAnthropicProvider(model, apiKey), nil
+	case "gemini":
+		return NewGeminiProvider(model, apiKey), nil
 	default:
 		return nil, fmt.Errorf("unknown LLM provider %q", providerName)
 	}

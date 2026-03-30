@@ -55,6 +55,14 @@ func TestNewProvider(t *testing.T) {
 		t.Errorf("name = %q, want anthropic", p.Name())
 	}
 
+	p, err = NewProvider("gemini", "gemini-2.0-flash", "key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Name() != "gemini" {
+		t.Errorf("name = %q, want gemini", p.Name())
+	}
+
 	_, err = NewProvider("unknown", "model", "key")
 	if err == nil {
 		t.Error("expected error for unknown provider")
